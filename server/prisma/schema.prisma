@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  type        String   @default("personal") // personal, work, community
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items         BulletItem[]
+  types         DataType[]
+  subscriptions Subscription[]
+}
+
+model BulletItem {
+  id          String   @id @default(uuid())
+  content     String   @default("")
+  parentId    String?
+  typeId      String?
+  typeName    String?
+  indent      Int      @default(0)
+  order       Int      @default(0)
+  workspaceId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type      DataType? @relation(fields: [typeId], references: [id], onDelete: SetNull)
+  parent    BulletItem? @relation("BulletItemParent", fields: [parentId], references: [id], onDelete: Cascade)
+  children  BulletItem[] @relation("BulletItemParent")
+
+  @@index([workspaceId])
+  @@index([parentId])
+  @@index([typeId])
+}
+
+model DataType {
+  id          String   @id @default(uuid())
+  name        String
+  color       String
+  icon        String?
+  workspaceId String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items     BulletItem[]
+  subscriptions Subscription[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model Subscription {
+  id             String   @id @default(uuid())
+  name           String
+  query          String
+  typeId         String?
+  filters        String?  // JSON string for filter conditions
+  workspaceId    String
+  notifyOnNew    Boolean  @default(false)
+  notifyChannels String   @default("[]") // JSON array of channels
+  unreadCount    Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type      DataType? @relation(fields: [typeId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([typeId])
+}
