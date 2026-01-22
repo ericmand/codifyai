@@ -1,15 +1,17 @@
 import { useRef, useEffect } from 'react'
 import { Circle, Hash } from 'lucide-react'
-import type { BulletItem as BulletItemType, DataType } from '../types'
+import { Doc, Id } from '../../../convex/_generated/dataModel'
 import clsx from 'clsx'
 
+type ItemWithChildren = Doc<"items"> & { children?: ItemWithChildren[] }
+
 interface BulletItemProps {
-  item: BulletItemType
-  onKeyDown: (e: React.KeyboardEvent, item: BulletItemType) => void
-  onChange: (id: string, content: string) => void
+  item: ItemWithChildren
+  onKeyDown: (e: React.KeyboardEvent, item: ItemWithChildren) => void
+  onChange: (id: Id<"items">, content: string) => void
   onFocus: (id: string) => void
   registerRef: (id: string, ref: HTMLInputElement | null) => void
-  types: DataType[]
+  types: Doc<"types">[]
   onOpenTypeModal: () => void
 }
 
@@ -23,12 +25,12 @@ export default function BulletItem({
   onOpenTypeModal,
 }: BulletItemProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const type = item.typeId ? types.find(t => t.id === item.typeId) : null
+  const type = item.typeId ? types.find(t => t._id === item.typeId) : null
 
   useEffect(() => {
-    registerRef(item.id, inputRef.current)
-    return () => registerRef(item.id, null)
-  }, [item.id, registerRef])
+    registerRef(item._id, inputRef.current)
+    return () => registerRef(item._id, null)
+  }, [item._id, registerRef])
 
   return (
     <div
@@ -58,9 +60,9 @@ export default function BulletItem({
           ref={inputRef}
           type="text"
           value={item.content}
-          onChange={(e) => onChange(item.id, e.target.value)}
+          onChange={(e) => onChange(item._id, e.target.value)}
           onKeyDown={(e) => onKeyDown(e, item)}
-          onFocus={() => onFocus(item.id)}
+          onFocus={() => onFocus(item._id)}
           placeholder="Type here..."
           className="flex-1 bg-transparent outline-none text-gray-900 placeholder-gray-400"
         />

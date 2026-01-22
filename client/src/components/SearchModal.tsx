@@ -1,47 +1,45 @@
 import { useState, useEffect, useRef } from 'react'
 import { Search, FileText, Hash, X } from 'lucide-react'
-import type { BulletItem, DataType } from '../types'
+import { useQuery } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
+import { Id, Doc } from '../../../convex/_generated/dataModel'
 import clsx from 'clsx'
 
 interface SearchModalProps {
   isOpen: boolean
   onClose: () => void
-  searchItems: (query: string) => BulletItem[]
-  types: DataType[]
+  types: Doc<"types">[]
+  workspaceId: Id<"workspaces"> | null
 }
 
-export default function SearchModal({ isOpen, onClose, searchItems, types }: SearchModalProps) {
+export default function SearchModal({ isOpen, onClose, types, workspaceId }: SearchModalProps) {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<BulletItem[]>([])
-  const [matchingTypes, setMatchingTypes] = useState<DataType[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const searchResults = useQuery(
+    api.items.search,
+    workspaceId && query.trim()
+      ? { workspaceId, query: query.trim() }
+      : "skip"
+  )
+
+  const results = searchResults?.slice(0, 10) ?? []
+  const matchingTypes = query.trim()
+    ? types.filter(t => t.name.toLowerCase().includes(query.toLowerCase()))
+    : []
 
   useEffect(() => {
     if (isOpen) {
       inputRef.current?.focus()
       setQuery('')
-      setResults([])
-      setMatchingTypes([])
       setSelectedIndex(0)
     }
   }, [isOpen])
 
   useEffect(() => {
-    if (query.trim()) {
-      const itemResults = searchItems(query)
-      setResults(itemResults.slice(0, 10))
-
-      const typeResults = types.filter(t =>
-        t.name.toLowerCase().includes(query.toLowerCase())
-      )
-      setMatchingTypes(typeResults)
-      setSelectedIndex(0)
-    } else {
-      setResults([])
-      setMatchingTypes([])
-    }
-  }, [query, searchItems, types])
+    setSelectedIndex(0)
+  }, [query])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -65,13 +63,12 @@ export default function SearchModal({ isOpen, onClose, searchItems, types }: Sea
 
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setSelectedIndex(i => (i + 1) % totalItems)
+      setSelectedIndex(i => (i + 1) % Math.max(1, totalItems))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setSelectedIndex(i => (i - 1 + totalItems) % totalItems)
+      setSelectedIndex(i => (i - 1 + totalItems) % Math.max(1, totalItems))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      // Handle selection
       onClose()
     }
   }
@@ -121,7 +118,7 @@ export default function SearchModal({ isOpen, onClose, searchItems, types }: Sea
                   </div>
                   {matchingTypes.map((type, index) => (
                     <button
-                      key={type.id}
+                      key={type._id}
                       className={clsx(
                         'w-full flex items-center gap-3 px-4 py-2 text-left transition-colors',
                         selectedIndex === index
@@ -150,7 +147,7 @@ export default function SearchModal({ isOpen, onClose, searchItems, types }: Sea
                   </div>
                   {results.map((item, index) => (
                     <button
-                      key={item.id}
+                      key={item._id}
                       className={clsx(
                         'w-full flex items-center gap-3 px-4 py-2 text-left transition-colors',
                         selectedIndex === matchingTypes.length + index

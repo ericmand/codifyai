@@ -1,15 +1,26 @@
-import { Trash2, RotateCcw } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
 import BulletEditor from '../components/BulletEditor'
-import { useEditorStore, useWorkspaceStore } from '../store'
+import { useUIStore } from '../store'
 
 export default function EditorPage() {
-  const { clearWorkspace, items } = useEditorStore()
-  const { getActiveWorkspace } = useWorkspaceStore()
-  const workspace = getActiveWorkspace()
+  const { activeWorkspaceId } = useUIStore()
 
-  const handleClearWorkspace = () => {
+  const workspaces = useQuery(api.workspaces.list) ?? []
+  const items = useQuery(
+    api.items.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
+  ) ?? []
+
+  const clearWorkspace = useMutation(api.items.clearWorkspace)
+
+  const workspace = workspaces.find(w => w._id === activeWorkspaceId)
+
+  const handleClearWorkspace = async () => {
+    if (!activeWorkspaceId) return
     if (window.confirm('Are you sure you want to clear all items? This cannot be undone.')) {
-      clearWorkspace()
+      await clearWorkspace({ workspaceId: activeWorkspaceId })
     }
   }
 

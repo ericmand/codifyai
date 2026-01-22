@@ -1,25 +1,46 @@
+import { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { useQuery } from 'convex/react'
 import {
   FileText,
   Table,
   Bell,
   Plus,
-  ChevronRight,
   Home,
   Briefcase,
   Users
 } from 'lucide-react'
-import { useSubscriptionStore, useWorkspaceStore, useEditorStore } from '../store'
+import { api } from '../../../convex/_generated/api'
+import { useUIStore } from '../store'
 import clsx from 'clsx'
 
 export default function Sidebar() {
   const location = useLocation()
-  const { subscriptions, getTotalUnreadCount } = useSubscriptionStore()
-  const { workspaces, activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
-  const { types } = useEditorStore()
-  const totalUnread = getTotalUnreadCount()
+  const { activeWorkspaceId, setActiveWorkspace } = useUIStore()
 
-  const workspaceIcons = {
+  const workspaces = useQuery(api.workspaces.list) ?? []
+  const types = useQuery(
+    api.types.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
+  ) ?? []
+  const subscriptions = useQuery(
+    api.subscriptions.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
+  ) ?? []
+  const totalUnread = useQuery(
+    api.subscriptions.getTotalUnread,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
+  ) ?? 0
+
+  // Set initial workspace
+  useEffect(() => {
+    if (!activeWorkspaceId && workspaces.length > 0) {
+      const defaultWs = workspaces.find(w => w.isDefault) ?? workspaces[0]
+      setActiveWorkspace(defaultWs._id)
+    }
+  }, [workspaces, activeWorkspaceId, setActiveWorkspace])
+
+  const workspaceIcons: Record<string, typeof Home> = {
     personal: Home,
     work: Briefcase,
     community: Users,
@@ -34,12 +55,12 @@ export default function Sidebar() {
         </label>
         <div className="space-y-1">
           {workspaces.map(workspace => {
-            const Icon = workspaceIcons[workspace.type]
-            const isActive = workspace.id === activeWorkspaceId
+            const Icon = workspaceIcons[workspace.type] ?? Home
+            const isActive = workspace._id === activeWorkspaceId
             return (
               <button
-                key={workspace.id}
-                onClick={() => setActiveWorkspace(workspace.id)}
+                key={workspace._id}
+                onClick={() => setActiveWorkspace(workspace._id)}
                 className={clsx(
                   'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors',
                   isActive
@@ -81,11 +102,11 @@ export default function Sidebar() {
           <div className="space-y-1">
             {types.map(type => (
               <Link
-                key={type.id}
-                to={`/table/${type.id}`}
+                key={type._id}
+                to={`/table/${type._id}`}
                 className={clsx(
                   'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                  location.pathname === `/table/${type.id}`
+                  location.pathname === `/table/${type._id}`
                     ? 'bg-primary-50 text-primary-700'
                     : 'text-gray-700 hover:bg-gray-100'
                 )}
@@ -116,8 +137,8 @@ export default function Sidebar() {
           <div className="space-y-1">
             {subscriptions.map(sub => (
               <Link
-                key={sub.id}
-                to={`/subscriptions?id=${sub.id}`}
+                key={sub._id}
+                to={`/subscriptions?id=${sub._id}`}
                 className="flex items-center justify-between px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center gap-2">

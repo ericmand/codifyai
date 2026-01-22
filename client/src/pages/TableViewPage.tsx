@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { useQuery } from 'convex/react'
 import {
   ArrowUpDown,
   ArrowUp,
@@ -8,27 +9,41 @@ import {
   ChevronRight,
   Filter,
   Download,
-  Plus
 } from 'lucide-react'
-import { useEditorStore } from '../store'
-import clsx from 'clsx'
+import { api } from '../../../convex/_generated/api'
+import { Id } from '../../../convex/_generated/dataModel'
+import { useUIStore } from '../store'
 
 type SortDirection = 'asc' | 'desc' | null
-type SortField = 'content' | 'createdAt' | 'updatedAt'
+type SortField = 'content' | '_creationTime'
 
 export default function TableViewPage() {
   const { typeId } = useParams<{ typeId: string }>()
-  const { types, getItemsByType, items } = useEditorStore()
+  const { activeWorkspaceId } = useUIStore()
 
-  const type = types.find(t => t.id === typeId)
-  const typeItems = typeId ? getItemsByType(typeId) : []
+  const types = useQuery(
+    api.types.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
+  ) ?? []
+
+  const allItems = useQuery(
+    api.items.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
+  ) ?? []
+
+  const typeItems = useQuery(
+    api.items.listByType,
+    typeId ? { typeId: typeId as Id<"types"> } : "skip"
+  ) ?? []
+
+  const type = types.find(t => t._id === typeId)
 
   // Pagination
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
 
   // Sorting
-  const [sortField, setSortField] = useState<SortField>('createdAt')
+  const [sortField, setSortField] = useState<SortField>('_creationTime')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
   // Filtering
@@ -38,25 +53,21 @@ export default function TableViewPage() {
   const filteredItems = useMemo(() => {
     let result = [...typeItems]
 
-    // Filter
     if (filterQuery) {
       result = result.filter(item =>
         item.content.toLowerCase().includes(filterQuery.toLowerCase())
       )
     }
 
-    // Sort
     if (sortField && sortDirection) {
       result.sort((a, b) => {
-        let aVal: string | Date = a[sortField]
-        let bVal: string | Date = b[sortField]
+        const aVal = a[sortField]
+        const bVal = b[sortField]
 
-        if (sortField === 'createdAt' || sortField === 'updatedAt') {
-          aVal = new Date(aVal)
-          bVal = new Date(bVal)
+        if (sortField === '_creationTime') {
           return sortDirection === 'asc'
-            ? aVal.getTime() - bVal.getTime()
-            : bVal.getTime() - aVal.getTime()
+            ? (aVal as number) - (bVal as number)
+            : (bVal as number) - (aVal as number)
         }
 
         return sortDirection === 'asc'
@@ -68,7 +79,6 @@ export default function TableViewPage() {
     return result
   }, [typeItems, filterQuery, sortField, sortDirection])
 
-  // Paginated data
   const paginatedItems = useMemo(() => {
     const start = (page - 1) * pageSize
     return filteredItems.slice(start, start + pageSize)
@@ -76,14 +86,13 @@ export default function TableViewPage() {
 
   const totalPages = Math.ceil(filteredItems.length / pageSize)
 
-  // Handle sort
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       if (sortDirection === 'asc') {
         setSortDirection('desc')
       } else if (sortDirection === 'desc') {
         setSortDirection(null)
-        setSortField('createdAt')
+        setSortField('_creationTime')
       }
     } else {
       setSortField(field)
@@ -91,21 +100,18 @@ export default function TableViewPage() {
     }
   }
 
-  // Get parent info for an item
-  const getParentInfo = (parentId: string | null) => {
+  const getParentInfo = (parentId: Id<"items"> | undefined) => {
     if (!parentId) return null
-    const parent = items.find(i => i.id === parentId)
+    const parent = allItems.find(i => i._id === parentId)
     return parent ? parent.content || 'Untitled' : null
   }
 
-  // Export as CSV
   const handleExport = () => {
-    const headers = ['Content', 'Parent', 'Created', 'Updated']
+    const headers = ['Content', 'Parent', 'Created']
     const rows = filteredItems.map(item => [
       item.content,
       getParentInfo(item.parentId) || '',
-      new Date(item.createdAt).toISOString(),
-      new Date(item.updatedAt).toISOString(),
+      new Date(item._creationTime).toISOString(),
     ])
 
     const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n')
@@ -221,28 +227,11 @@ export default function TableViewPage() {
               </th>
               <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                 <button
-                  onClick={() => handleSort('createdAt')}
+                  onClick={() => handleSort('_creationTime')}
                   className="flex items-center gap-1 hover:text-gray-700"
                 >
                   Created
-                  {sortField === 'createdAt' ? (
-                    sortDirection === 'asc' ? (
-                      <ArrowUp className="w-4 h-4" />
-                    ) : (
-                      <ArrowDown className="w-4 h-4" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="w-4 h-4 text-gray-300" />
-                  )}
-                </button>
-              </th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                <button
-                  onClick={() => handleSort('updatedAt')}
-                  className="flex items-center gap-1 hover:text-gray-700"
-                >
-                  Updated
-                  {sortField === 'updatedAt' ? (
+                  {sortField === '_creationTime' ? (
                     sortDirection === 'asc' ? (
                       <ArrowUp className="w-4 h-4" />
                     ) : (
@@ -258,13 +247,13 @@ export default function TableViewPage() {
           <tbody className="divide-y divide-gray-200">
             {paginatedItems.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={3} className="px-6 py-12 text-center text-gray-500">
                   No items found
                 </td>
               </tr>
             ) : (
               paginatedItems.map(item => (
-                <tr key={item.id} className="hover:bg-gray-50">
+                <tr key={item._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <span className="text-gray-900">{item.content || 'Untitled'}</span>
                   </td>
@@ -275,12 +264,7 @@ export default function TableViewPage() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-gray-500 text-sm">
-                      {new Date(item.createdAt).toLocaleDateString()}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-gray-500 text-sm">
-                      {new Date(item.updatedAt).toLocaleDateString()}
+                      {new Date(item._creationTime).toLocaleDateString()}
                     </span>
                   </td>
                 </tr>

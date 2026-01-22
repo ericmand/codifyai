@@ -11,10 +11,6 @@ build/
 .env.local
 .env.*.local
 
-# Database
-*.db
-*.db-journal
-
 # IDE
 .vscode/
 .idea/
@@ -34,11 +30,10 @@ yarn-error.log*
 # Test coverage
 coverage/
 
-# Prisma
-server/prisma/*.db
-server/prisma/*.db-journal
-
 # Temporary files
 *.tmp
 *.temp
 .cache/
+
+# Convex
+.convex/

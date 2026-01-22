@@ -1,10 +1,10 @@
 import { Hash, ArrowRight, ChevronDown } from 'lucide-react'
-import type { BulletItem, DataType } from '../types'
+import { Doc } from '../../../convex/_generated/dataModel'
 
 interface RelatedItemsPreviewProps {
-  item: BulletItem
-  relatedItems: BulletItem[]
-  types: DataType[]
+  item: Doc<"items">
+  relatedItems: Doc<"items">[]
+  types: Doc<"types">[]
 }
 
 export default function RelatedItemsPreview({
@@ -12,13 +12,13 @@ export default function RelatedItemsPreview({
   relatedItems,
   types,
 }: RelatedItemsPreviewProps) {
-  const type = item.typeId ? types.find(t => t.id === item.typeId) : null
+  const type = item.typeId ? types.find(t => t._id === item.typeId) : null
 
   // Group related items by relationship type
-  const parents = relatedItems.filter(i => i.id === item.parentId)
-  const children = relatedItems.filter(i => i.parentId === item.id)
+  const parents = relatedItems.filter(i => i._id === item.parentId)
+  const children = relatedItems.filter(i => i.parentId === item._id)
   const sameType = relatedItems.filter(
-    i => i.typeId === item.typeId && i.id !== item.id && i.id !== item.parentId && i.parentId !== item.id
+    i => i.typeId === item.typeId && i._id !== item._id && i._id !== item.parentId && i.parentId !== item._id
   )
 
   if (relatedItems.length === 0) return null
@@ -44,7 +44,7 @@ export default function RelatedItemsPreview({
           <div>
             <div className="text-xs text-gray-500 uppercase mb-1">Parent</div>
             {parents.map(p => (
-              <RelatedItemCard key={p.id} item={p} types={types} />
+              <RelatedItemCard key={p._id} item={p} types={types} />
             ))}
           </div>
         )}
@@ -57,7 +57,7 @@ export default function RelatedItemsPreview({
             </div>
             <div className="space-y-1">
               {children.slice(0, 5).map(c => (
-                <RelatedItemCard key={c.id} item={c} types={types} />
+                <RelatedItemCard key={c._id} item={c} types={types} />
               ))}
               {children.length > 5 && (
                 <div className="text-xs text-gray-500 pl-6">
@@ -76,7 +76,7 @@ export default function RelatedItemsPreview({
             </div>
             <div className="space-y-1">
               {sameType.slice(0, 5).map(s => (
-                <RelatedItemCard key={s.id} item={s} types={types} />
+                <RelatedItemCard key={s._id} item={s} types={types} />
               ))}
               {sameType.length > 5 && (
                 <div className="text-xs text-gray-500 pl-6">
@@ -91,8 +91,8 @@ export default function RelatedItemsPreview({
   )
 }
 
-function RelatedItemCard({ item, types }: { item: BulletItem; types: DataType[] }) {
-  const type = item.typeId ? types.find(t => t.id === item.typeId) : null
+function RelatedItemCard({ item, types }: { item: Doc<"items">; types: Doc<"types">[] }) {
+  const type = item.typeId ? types.find(t => t._id === item.typeId) : null
 
   return (
     <div className="flex items-center gap-2 px-3 py-2 bg-white rounded border border-gray-200 hover:border-primary-300 transition-colors cursor-pointer">

@@ -20,6 +20,7 @@ Codify is a low-code text editor combining document expressiveness with database
 - **Subscriptions** - Create persistent links to specific views with badge notifications
 - **API endpoints** - Views become queryable API endpoints for external integration
 - **Multi-workspace support** - Personal, work, and community workspaces
+- **Real-time sync** - Changes sync instantly across all clients
 
 ## Tech Stack
 
@@ -27,20 +28,20 @@ Codify is a low-code text editor combining document expressiveness with database
 - React 18 with TypeScript
 - Vite for build tooling
 - Tailwind CSS for styling
-- Zustand for state management
+- Zustand for UI state management
 - React Router for navigation
 
 ### Backend
-- Node.js with Express
+- [Convex](https://convex.dev) - Real-time backend-as-a-service
 - TypeScript
-- Prisma ORM
-- SQLite database
+- Automatic real-time sync
 
 ## Getting Started
 
 ### Prerequisites
 - Node.js 18+
 - npm or yarn
+- Convex account (free tier available)
 
 ### Installation
 
@@ -54,25 +55,26 @@ cd codifyai
 ```bash
 npm install
 cd client && npm install
-cd ../server && npm install
 ```
 
-3. Set up the database:
+3. Set up Convex:
 ```bash
-cd server
-npx prisma generate
-npx prisma db push
+# Login to Convex (creates account if needed)
+npx convex login
+
+# Initialize Convex project (from root directory)
+npx convex dev
 ```
 
-4. Start development servers:
+This will create a `.env.local` file in your client directory with your Convex URL.
+
+4. Start the development server:
 ```bash
-# From root directory
+cd client
 npm run dev
 ```
 
-This will start:
-- Frontend at http://localhost:3000
-- Backend at http://localhost:3001
+The app will be available at http://localhost:5173
 
 ## Keyboard Shortcuts
 
@@ -94,41 +96,55 @@ codifyai/
 │   ├── src/
 │   │   ├── components/     # UI components
 │   │   ├── pages/          # Page components
-│   │   ├── store/          # Zustand stores
-│   │   ├── types/          # TypeScript types
+│   │   ├── store/          # Zustand UI store
 │   │   └── utils/          # Utility functions
 │   └── ...
-├── server/                 # Express backend
-│   ├── src/
-│   │   ├── routes/         # API routes
-│   │   └── index.ts        # Server entry
-│   └── prisma/
-│       └── schema.prisma   # Database schema
+├── convex/                 # Convex backend
+│   ├── schema.ts           # Database schema
+│   ├── items.ts            # Item queries/mutations
+│   ├── types.ts            # Type queries/mutations
+│   ├── workspaces.ts       # Workspace queries/mutations
+│   └── subscriptions.ts    # Subscription queries/mutations
 └── package.json            # Root package.json
 ```
 
-## API Endpoints
+## Convex Functions
 
 ### Items
-- `GET /api/items` - List items (with pagination, filtering)
-- `POST /api/items` - Create item
-- `PATCH /api/items/:id` - Update item
-- `DELETE /api/items/:id` - Delete item
-- `GET /api/items/:id/related` - Get related items
+- `items.list` - List items by workspace
+- `items.listByType` - List items by type (for table view)
+- `items.get` - Get single item
+- `items.getWithChildren` - Get item with nested children
+- `items.getRelated` - Get related items (same type, bidirectional)
+- `items.search` - Full-text search
+- `items.create` - Create item
+- `items.update` - Update item
+- `items.remove` - Delete item
 
 ### Types
-- `GET /api/types` - List types
-- `POST /api/types` - Create type
-- `GET /api/types/:id/items` - Get items by type (table view)
+- `types.list` - List types by workspace
+- `types.get` - Get single type
+- `types.create` - Create type
+- `types.update` - Update type
+- `types.remove` - Delete type
 
 ### Subscriptions
-- `GET /api/subscriptions` - List subscriptions
-- `POST /api/subscriptions` - Create subscription
-- `GET /api/subscriptions/:id/items` - Query subscription items (API endpoint)
+- `subscriptions.list` - List subscriptions
+- `subscriptions.get` - Get subscription
+- `subscriptions.getWithItems` - Get subscription with matching items
+- `subscriptions.getTotalUnread` - Get total unread count
+- `subscriptions.create` - Create subscription
+- `subscriptions.update` - Update subscription
+- `subscriptions.markAsRead` - Mark as read
+- `subscriptions.remove` - Delete subscription
 
 ### Workspaces
-- `GET /api/workspaces` - List workspaces
-- `POST /api/workspaces` - Create workspace
+- `workspaces.list` - List workspaces
+- `workspaces.get` - Get workspace
+- `workspaces.initialize` - Initialize default workspace
+- `workspaces.create` - Create workspace
+- `workspaces.update` - Update workspace
+- `workspaces.remove` - Delete workspace
 
 ## License
 

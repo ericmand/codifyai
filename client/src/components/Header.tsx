@@ -1,11 +1,18 @@
 import { useState } from 'react'
 import { Search, Settings, HelpCircle } from 'lucide-react'
-import { useEditorStore } from '../store'
+import { useQuery } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
+import { useUIStore } from '../store'
 import SearchModal from './SearchModal'
 
 export default function Header() {
   const [isSearchOpen, setIsSearchOpen] = useState(false)
-  const { searchItems, types } = useEditorStore()
+  const { activeWorkspaceId } = useUIStore()
+
+  const types = useQuery(
+    api.types.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
+  ) ?? []
 
   return (
     <>
@@ -38,8 +45,8 @@ export default function Header() {
       <SearchModal
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
-        searchItems={searchItems}
         types={types}
+        workspaceId={activeWorkspaceId}
       />
     </>
   )

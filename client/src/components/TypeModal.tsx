@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { Hash, Plus, X, Check } from 'lucide-react'
-import type { DataType } from '../types'
-import { useEditorStore } from '../store'
+import { Doc, Id } from '../../../convex/_generated/dataModel'
 import clsx from 'clsx'
 
 interface TypeModalProps {
   isOpen: boolean
   onClose: () => void
-  onSelectType: (typeId: string | null, typeName: string | null) => void
-  types: DataType[]
+  onSelectType: (typeId: Id<"types"> | null, typeName: string | null) => void
+  onCreateType: (name: string, color: string) => Promise<{ id: Id<"types">; name: string; color: string } | null>
+  types: Doc<"types">[]
 }
 
 const TYPE_COLORS = [
@@ -22,14 +22,13 @@ const TYPE_COLORS = [
   '#6b7280', // gray
 ]
 
-export default function TypeModal({ isOpen, onClose, onSelectType, types }: TypeModalProps) {
+export default function TypeModal({ isOpen, onClose, onSelectType, onCreateType, types }: TypeModalProps) {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isCreating, setIsCreating] = useState(false)
   const [newTypeName, setNewTypeName] = useState('')
   const [newTypeColor, setNewTypeColor] = useState(TYPE_COLORS[0])
   const inputRef = useRef<HTMLInputElement>(null)
-  const { addType } = useEditorStore()
 
   const filteredTypes = types.filter(t =>
     t.name.toLowerCase().includes(query.toLowerCase())
@@ -68,19 +67,20 @@ export default function TypeModal({ isOpen, onClose, onSelectType, types }: Type
       e.preventDefault()
       if (selectedIndex < filteredTypes.length) {
         const type = filteredTypes[selectedIndex]
-        onSelectType(type.id, type.name)
+        onSelectType(type._id, type.name)
       } else if (selectedIndex === filteredTypes.length && query.trim()) {
-        // Create new type
         setIsCreating(true)
         setNewTypeName(query)
       }
     }
   }
 
-  const handleCreateType = () => {
+  const handleCreateType = async () => {
     if (newTypeName.trim()) {
-      const newType = addType(newTypeName.trim(), newTypeColor)
-      onSelectType(newType.id, newType.name)
+      const newType = await onCreateType(newTypeName.trim(), newTypeColor)
+      if (newType) {
+        onSelectType(newType.id, newType.name)
+      }
     }
   }
 
@@ -129,8 +129,8 @@ export default function TypeModal({ isOpen, onClose, onSelectType, types }: Type
 
               {filteredTypes.map((type, index) => (
                 <button
-                  key={type.id}
-                  onClick={() => onSelectType(type.id, type.name)}
+                  key={type._id}
+                  onClick={() => onSelectType(type._id, type.name)}
                   className={clsx(
                     'w-full flex items-center gap-3 px-4 py-2 text-left transition-colors',
                     selectedIndex === index

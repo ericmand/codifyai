@@ -1,132 +1,65 @@
-import { useRef, useEffect, useCallback } from 'react'
-import { useEditorStore } from '../store'
+import { useRef, useCallback, useMemo } from 'react'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
+import { Doc, Id } from '../../../convex/_generated/dataModel'
+import { useUIStore } from '../store'
 import BulletItem from './BulletItem'
 import TypeModal from './TypeModal'
 import RelatedItemsPreview from './RelatedItemsPreview'
-import type { BulletItem as BulletItemType } from '../types'
+
+type ItemWithChildren = Doc<"items"> & { children?: ItemWithChildren[] }
 
 export default function BulletEditor() {
   const {
-    items,
     focusedItemId,
     isTypeModalOpen,
     typeModalItemId,
-    addItem,
-    updateItem,
-    deleteItem,
-    indentItem,
-    outdentItem,
+    activeWorkspaceId,
     setFocusedItem,
-    closeTypeModal,
     openTypeModal,
-    assignType,
-    types,
-    getRelatedItems,
-  } = useEditorStore()
+    closeTypeModal,
+  } = useUIStore()
+
+  const items = useQuery(
+    api.items.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
+  ) ?? []
+
+  const types = useQuery(
+    api.types.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
+  ) ?? []
+
+  const relatedItems = useQuery(
+    api.items.getRelated,
+    focusedItemId ? { id: focusedItemId as Id<"items"> } : "skip"
+  )
+
+  const createItem = useMutation(api.items.create)
+  const updateItem = useMutation(api.items.update)
+  const removeItem = useMutation(api.items.remove)
+  const createType = useMutation(api.types.create)
 
   const editorRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Map<string, HTMLInputElement>>(new Map())
 
   // Build tree structure from flat items
-  const buildTree = useCallback((parentId: string | null = null): BulletItemType[] => {
+  const buildTree = useCallback((parentId: Id<"items"> | null = null): ItemWithChildren[] => {
     return items
-      .filter(item => item.parentId === parentId)
+      .filter(item => (item.parentId ?? null) === parentId)
       .sort((a, b) => a.order - b.order)
       .map(item => ({
         ...item,
-        children: buildTree(item.id),
+        children: buildTree(item._id),
       }))
   }, [items])
 
-  const rootItems = buildTree(null)
-
-  // Focus management
-  const focusItem = useCallback((itemId: string) => {
-    const input = itemRefs.current.get(itemId)
-    if (input) {
-      input.focus()
-      // Move cursor to end
-      const length = input.value.length
-      input.setSelectionRange(length, length)
-    }
-  }, [])
-
-  // Handle keyboard navigation
-  const handleKeyDown = useCallback((e: React.KeyboardEvent, item: BulletItemType) => {
-    const input = e.target as HTMLInputElement
-    const cursorPosition = input.selectionStart || 0
-
-    // ENTER: Create new item
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      const newId = addItem(item.parentId, item.id)
-      setTimeout(() => focusItem(newId), 0)
-    }
-
-    // SHIFT+ENTER: Open type modal
-    if (e.key === 'Enter' && e.shiftKey) {
-      e.preventDefault()
-      openTypeModal(item.id)
-    }
-
-    // TAB: Indent
-    if (e.key === 'Tab' && !e.shiftKey) {
-      e.preventDefault()
-      indentItem(item.id)
-    }
-
-    // SHIFT+TAB: Outdent
-    if (e.key === 'Tab' && e.shiftKey) {
-      e.preventDefault()
-      outdentItem(item.id)
-    }
-
-    // BACKSPACE at start: Delete or merge
-    if (e.key === 'Backspace' && cursorPosition === 0 && item.content === '') {
-      e.preventDefault()
-      // Find previous item to focus
-      const flatItems = items.sort((a, b) => {
-        if (a.indent !== b.indent) return a.indent - b.indent
-        return a.order - b.order
-      })
-      const currentIndex = flatItems.findIndex(i => i.id === item.id)
-      const prevItem = flatItems[currentIndex - 1]
-
-      if (items.length > 1) {
-        deleteItem(item.id)
-        if (prevItem) {
-          setTimeout(() => focusItem(prevItem.id), 0)
-        }
-      }
-    }
-
-    // ARROW UP: Navigate up
-    if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      const flatItems = getAllFlatItems()
-      const currentIndex = flatItems.findIndex(i => i.id === item.id)
-      if (currentIndex > 0) {
-        const prevItem = flatItems[currentIndex - 1]
-        focusItem(prevItem.id)
-      }
-    }
-
-    // ARROW DOWN: Navigate down
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      const flatItems = getAllFlatItems()
-      const currentIndex = flatItems.findIndex(i => i.id === item.id)
-      if (currentIndex < flatItems.length - 1) {
-        const nextItem = flatItems[currentIndex + 1]
-        focusItem(nextItem.id)
-      }
-    }
-  }, [items, addItem, deleteItem, indentItem, outdentItem, openTypeModal, focusItem])
+  const rootItems = useMemo(() => buildTree(null), [buildTree])
 
   // Get all items in display order (flattened tree)
-  const getAllFlatItems = useCallback((): BulletItemType[] => {
-    const result: BulletItemType[] = []
-    const traverse = (items: BulletItemType[]) => {
+  const getAllFlatItems = useCallback((): ItemWithChildren[] => {
+    const result: ItemWithChildren[] = []
+    const traverse = (items: ItemWithChildren[]) => {
       for (const item of items) {
         result.push(item)
         if (item.children) traverse(item.children)
@@ -135,6 +68,115 @@ export default function BulletEditor() {
     traverse(rootItems)
     return result
   }, [rootItems])
+
+  // Focus management
+  const focusItem = useCallback((itemId: string) => {
+    setTimeout(() => {
+      const input = itemRefs.current.get(itemId)
+      if (input) {
+        input.focus()
+        const length = input.value.length
+        input.setSelectionRange(length, length)
+      }
+    }, 50)
+  }, [])
+
+  // Handle keyboard navigation
+  const handleKeyDown = useCallback(async (e: React.KeyboardEvent, item: ItemWithChildren) => {
+    if (!activeWorkspaceId) return
+
+    const input = e.target as HTMLInputElement
+    const cursorPosition = input.selectionStart || 0
+
+    // ENTER: Create new item
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      const newId = await createItem({
+        content: '',
+        parentId: item.parentId ?? undefined,
+        indent: item.indent,
+        order: item.order + 1,
+        workspaceId: activeWorkspaceId,
+      })
+      focusItem(newId)
+    }
+
+    // SHIFT+ENTER: Open type modal
+    if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault()
+      openTypeModal(item._id)
+    }
+
+    // TAB: Indent
+    if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault()
+      if (item.indent < 8) {
+        const siblings = items
+          .filter(i => (i.parentId ?? null) === (item.parentId ?? null) && i._id !== item._id)
+          .sort((a, b) => a.order - b.order)
+        const prevSibling = siblings.find(s => s.order < item.order)
+        if (prevSibling) {
+          await updateItem({
+            id: item._id,
+            parentId: prevSibling._id,
+            indent: item.indent + 1,
+          })
+        }
+      }
+    }
+
+    // SHIFT+TAB: Outdent
+    if (e.key === 'Tab' && e.shiftKey) {
+      e.preventDefault()
+      if (item.indent > 0 && item.parentId) {
+        const parent = items.find(i => i._id === item.parentId)
+        if (parent) {
+          await updateItem({
+            id: item._id,
+            parentId: parent.parentId ?? null,
+            indent: Math.max(0, item.indent - 1),
+          })
+        }
+      }
+    }
+
+    // BACKSPACE at start: Delete or merge
+    if (e.key === 'Backspace' && cursorPosition === 0 && item.content === '') {
+      e.preventDefault()
+      const flatItems = getAllFlatItems()
+      const currentIndex = flatItems.findIndex(i => i._id === item._id)
+      const prevItem = flatItems[currentIndex - 1]
+
+      if (items.length > 1) {
+        await removeItem({ id: item._id })
+        if (prevItem) {
+          focusItem(prevItem._id)
+        }
+      }
+    }
+
+    // ARROW UP: Navigate up
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      const flatItems = getAllFlatItems()
+      const currentIndex = flatItems.findIndex(i => i._id === item._id)
+      if (currentIndex > 0) {
+        const prevItem = flatItems[currentIndex - 1]
+        focusItem(prevItem._id)
+      }
+    }
+
+    // ARROW DOWN: Navigate down
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      const flatItems = getAllFlatItems()
+      const currentIndex = flatItems.findIndex(i => i._id === item._id)
+      if (currentIndex < flatItems.length - 1) {
+        const nextItem = flatItems[currentIndex + 1]
+        focusItem(nextItem._id)
+      }
+    }
+  }, [items, activeWorkspaceId, createItem, updateItem, removeItem, openTypeModal, focusItem, getAllFlatItems])
 
   // Register item ref
   const registerItemRef = useCallback((id: string, ref: HTMLInputElement | null) => {
@@ -146,8 +188,8 @@ export default function BulletEditor() {
   }, [])
 
   // Handle content change
-  const handleContentChange = useCallback((id: string, content: string) => {
-    updateItem(id, { content })
+  const handleContentChange = useCallback(async (id: Id<"items">, content: string) => {
+    await updateItem({ id, content })
   }, [updateItem])
 
   // Handle focus change
@@ -155,14 +197,34 @@ export default function BulletEditor() {
     setFocusedItem(id)
   }, [setFocusedItem])
 
-  // Get related items for preview
-  const relatedItems = focusedItemId ? getRelatedItems(focusedItemId) : []
-  const focusedItem = focusedItemId ? items.find(i => i.id === focusedItemId) : null
+  // Handle type assignment
+  const handleAssignType = useCallback(async (itemId: string, typeId: Id<"types"> | null, typeName: string | null) => {
+    await updateItem({
+      id: itemId as Id<"items">,
+      typeId: typeId ?? null,
+      typeName: typeName ?? null,
+    })
+    closeTypeModal()
+  }, [updateItem, closeTypeModal])
+
+  // Handle type creation
+  const handleCreateType = useCallback(async (name: string, color: string) => {
+    if (!activeWorkspaceId) return null
+    const newTypeId = await createType({
+      name,
+      color,
+      workspaceId: activeWorkspaceId,
+    })
+    return { id: newTypeId, name, color }
+  }, [createType, activeWorkspaceId])
+
+  // Get focused item for preview
+  const focusedItem = focusedItemId ? items.find(i => i._id === focusedItemId) : null
 
   // Render items recursively
-  const renderItems = (items: BulletItemType[]) => {
-    return items.map(item => (
-      <div key={item.id}>
+  const renderItems = (itemList: ItemWithChildren[]) => {
+    return itemList.map(item => (
+      <div key={item._id}>
         <BulletItem
           item={item}
           onKeyDown={handleKeyDown}
@@ -170,7 +232,7 @@ export default function BulletEditor() {
           onFocus={handleFocus}
           registerRef={registerItemRef}
           types={types}
-          onOpenTypeModal={() => openTypeModal(item.id)}
+          onOpenTypeModal={() => openTypeModal(item._id)}
         />
         {item.children && item.children.length > 0 && (
           <div className="ml-6">
@@ -181,6 +243,14 @@ export default function BulletEditor() {
     ))
   }
 
+  if (!activeWorkspaceId) {
+    return (
+      <div className="flex items-center justify-center h-64 text-gray-500">
+        Loading...
+      </div>
+    )
+  }
+
   return (
     <div className="relative">
       <div ref={editorRef} className="min-h-[400px] py-4">
@@ -188,10 +258,10 @@ export default function BulletEditor() {
       </div>
 
       {/* Related Items Preview */}
-      {focusedItem && relatedItems.length > 0 && (
+      {focusedItem && relatedItems && relatedItems.length > 0 && (
         <RelatedItemsPreview
           item={focusedItem}
-          relatedItems={relatedItems}
+          relatedItems={relatedItems.map(r => r.item)}
           types={types}
         />
       )}
@@ -202,9 +272,10 @@ export default function BulletEditor() {
         onClose={closeTypeModal}
         onSelectType={(typeId, typeName) => {
           if (typeModalItemId) {
-            assignType(typeModalItemId, typeId, typeName)
+            handleAssignType(typeModalItemId, typeId, typeName)
           }
         }}
+        onCreateType={handleCreateType}
         types={types}
       />
     </div>

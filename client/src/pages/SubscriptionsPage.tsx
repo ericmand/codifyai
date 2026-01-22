@@ -1,64 +1,77 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useQuery, useMutation } from 'convex/react'
 import {
   Bell,
-  BellOff,
   Trash2,
   Plus,
   Mail,
   Smartphone,
-  Check,
-  X,
   Link2,
-  Copy
 } from 'lucide-react'
-import { useSubscriptionStore, useEditorStore, useWorkspaceStore } from '../store'
+import { api } from '../../../convex/_generated/api'
+import { Id } from '../../../convex/_generated/dataModel'
+import { useUIStore } from '../store'
 import clsx from 'clsx'
 
 export default function SubscriptionsPage() {
   const [searchParams] = useSearchParams()
   const selectedId = searchParams.get('id')
+  const { activeWorkspaceId } = useUIStore()
 
-  const { subscriptions, addSubscription, updateSubscription, deleteSubscription, markAsRead } = useSubscriptionStore()
-  const { types, getItemsByType } = useEditorStore()
-  const { activeWorkspaceId } = useWorkspaceStore()
+  const subscriptions = useQuery(
+    api.subscriptions.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
+  ) ?? []
+
+  const types = useQuery(
+    api.types.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
+  ) ?? []
+
+  const createSubscription = useMutation(api.subscriptions.create)
+  const updateSubscription = useMutation(api.subscriptions.update)
+  const removeSubscription = useMutation(api.subscriptions.remove)
+  const markAsRead = useMutation(api.subscriptions.markAsRead)
 
   const [isCreating, setIsCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [newTypeId, setNewTypeId] = useState('')
 
   const selectedSubscription = selectedId
-    ? subscriptions.find(s => s.id === selectedId)
+    ? subscriptions.find(s => s._id === selectedId)
     : subscriptions[0]
 
-  const subscriptionItems = selectedSubscription?.typeId
-    ? getItemsByType(selectedSubscription.typeId)
-    : []
+  const subscriptionItems = useQuery(
+    api.items.listByType,
+    selectedSubscription?.typeId ? { typeId: selectedSubscription.typeId } : "skip"
+  ) ?? []
 
-  const handleCreate = () => {
-    if (newName.trim() && newTypeId) {
-      const type = types.find(t => t.id === newTypeId)
-      addSubscription(
-        newName.trim(),
-        `type:${type?.name || ''}`,
-        activeWorkspaceId,
-        { typeId: newTypeId, notifyOnNew: true, notifyChannels: ['app'] }
-      )
-      setIsCreating(false)
-      setNewName('')
-      setNewTypeId('')
-    }
+  const handleCreate = async () => {
+    if (!activeWorkspaceId || !newName.trim() || !newTypeId) return
+
+    const type = types.find(t => t._id === newTypeId)
+    await createSubscription({
+      name: newName.trim(),
+      query: `type:${type?.name || ''}`,
+      typeId: newTypeId as Id<"types">,
+      workspaceId: activeWorkspaceId,
+      notifyOnNew: true,
+      notifyChannels: ['app'],
+    })
+    setIsCreating(false)
+    setNewName('')
+    setNewTypeId('')
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: Id<"subscriptions">) => {
     if (window.confirm('Are you sure you want to delete this subscription?')) {
-      deleteSubscription(id)
+      await removeSubscription({ id })
     }
   }
 
-  const copyEndpoint = (sub: typeof selectedSubscription) => {
-    if (!sub) return
-    const endpoint = `${window.location.origin}/api/subscriptions/${sub.id}/items`
+  const copyEndpoint = (subId: Id<"subscriptions">) => {
+    const endpoint = `${window.location.origin}/api/subscriptions/${subId}/items`
     navigator.clipboard.writeText(endpoint)
     alert('API endpoint copied to clipboard!')
   }
@@ -96,7 +109,7 @@ export default function SubscriptionsPage() {
               >
                 <option value="">Select type...</option>
                 {types.map(type => (
-                  <option key={type.id} value={type.id}>
+                  <option key={type._id} value={type._id}>
                     {type.name}
                   </option>
                 ))}
@@ -129,13 +142,13 @@ export default function SubscriptionsPage() {
           ) : (
             <div className="py-2">
               {subscriptions.map(sub => {
-                const type = sub.typeId ? types.find(t => t.id === sub.typeId) : null
-                const isSelected = sub.id === selectedSubscription?.id
+                const type = sub.typeId ? types.find(t => t._id === sub.typeId) : null
+                const isSelected = sub._id === selectedSubscription?._id
                 return (
                   <a
-                    key={sub.id}
-                    href={`?id=${sub.id}`}
-                    onClick={() => markAsRead(sub.id)}
+                    key={sub._id}
+                    href={`?id=${sub._id}`}
+                    onClick={() => markAsRead({ id: sub._id })}
                     className={clsx(
                       'flex items-center gap-3 px-4 py-3 transition-colors',
                       isSelected ? 'bg-primary-50' : 'hover:bg-gray-50'
@@ -188,7 +201,7 @@ export default function SubscriptionsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => copyEndpoint(selectedSubscription)}
+                    onClick={() => copyEndpoint(selectedSubscription._id)}
                     className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                     title="Copy API endpoint"
                   >
@@ -196,7 +209,7 @@ export default function SubscriptionsPage() {
                     API
                   </button>
                   <button
-                    onClick={() => handleDelete(selectedSubscription.id)}
+                    onClick={() => handleDelete(selectedSubscription._id)}
                     className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -214,7 +227,8 @@ export default function SubscriptionsPage() {
                     type="checkbox"
                     checked={selectedSubscription.notifyOnNew}
                     onChange={(e) =>
-                      updateSubscription(selectedSubscription.id, {
+                      updateSubscription({
+                        id: selectedSubscription._id,
                         notifyOnNew: e.target.checked,
                       })
                     }
@@ -232,7 +246,10 @@ export default function SubscriptionsPage() {
                         const channels = e.target.checked
                           ? [...selectedSubscription.notifyChannels, 'app' as const]
                           : selectedSubscription.notifyChannels.filter(c => c !== 'app')
-                        updateSubscription(selectedSubscription.id, { notifyChannels: channels })
+                        updateSubscription({
+                          id: selectedSubscription._id,
+                          notifyChannels: channels,
+                        })
                       }}
                       className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                     />
@@ -247,7 +264,10 @@ export default function SubscriptionsPage() {
                         const channels = e.target.checked
                           ? [...selectedSubscription.notifyChannels, 'email' as const]
                           : selectedSubscription.notifyChannels.filter(c => c !== 'email')
-                        updateSubscription(selectedSubscription.id, { notifyChannels: channels })
+                        updateSubscription({
+                          id: selectedSubscription._id,
+                          notifyChannels: channels,
+                        })
                       }}
                       className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                     />
@@ -267,13 +287,13 @@ export default function SubscriptionsPage() {
               ) : (
                 <div className="divide-y divide-gray-200">
                   {subscriptionItems.map(item => (
-                    <div key={item.id} className="px-6 py-4 hover:bg-gray-50">
+                    <div key={item._id} className="px-6 py-4 hover:bg-gray-50">
                       <div className="flex items-start gap-3">
                         <div className="w-2 h-2 mt-2 bg-primary-500 rounded-full flex-shrink-0" />
                         <div>
                           <p className="text-gray-900">{item.content || 'Untitled'}</p>
                           <p className="text-xs text-gray-500 mt-1">
-                            Created {new Date(item.createdAt).toLocaleString()}
+                            Created {new Date(item._creationTime).toLocaleString()}
                           </p>
                         </div>
                       </div>
